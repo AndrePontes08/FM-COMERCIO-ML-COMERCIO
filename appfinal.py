@@ -10,31 +10,23 @@ st.set_page_config(page_title="Relatório Financeiro 2025", layout="wide")
 # --- ARQUIVO PADRÃO ---
 ARQUIVO_PADRAO = "CONTAS2025-3.csv"
 
-# --- FUNÇÃO DE IDENTIFICAÇÃO DE IMPOSTOS (COM AGRUPAMENTO) ---
+# --- FUNÇÕES DE CATEGORIZAÇÃO ---
 def categorizar_imposto(descricao):
     if not isinstance(descricao, str): return None
     d = descricao.upper().strip()
     
-    # Regras de Agrupamento (Do mais específico para o mais geral)
-    
-    # 1. ICMS e FUNCEP
-    if 'FUNCEP' in d: return "FUNCEP" # Pega ICMS FUNCEP e joga no grupo FUNCEP
+    if 'FUNCEP' in d: return "FUNCEP"
     if 'ICMS' in d: return "ICMS"
-    
-    # 2. IPTU e TCR
-    if 'IPTU' in d and 'TCR' in d: return "IPTU/TCR" # Agrupa quem tem os dois
+    if 'IPTU' in d and 'TCR' in d: return "IPTU/TCR"
     if 'IPTU' in d: return "IPTU"
     if 'TCR' in d: return "TCR"
     
-    # 3. DAS e SIMPLES (Cuidado com 'DAS PLACAS')
     if 'SIMPLES' in d: return "SIMPLES NACIONAL"
     if 'DAS' in d:
-        # Palavras que indicam que NÃO é imposto
         proibidos = ['PLACAS', 'LETRAS', 'FACHADA', 'HOLANDAS', 'DUPLICATA', 'LUZES', 'CORDA', 'MAURICIO']
         if not any(p in d for p in proibidos):
             return "DAS (SIMPLES)"
             
-    # 4. Federais
     if 'DARF' in d: return "DARF"
     if 'RECEITA FEDERAL' in d: return "RECEITA FEDERAL"
     if 'IRRF' in d: return "IRRF"
@@ -42,33 +34,26 @@ def categorizar_imposto(descricao):
     
     return None
 
-# --- FUNÇÃO DE IDENTIFICAÇÃO DE EMPRÉSTIMOS ---
 def categorizar_emprestimo(descricao):
     if not isinstance(descricao, str): return None
     d = descricao.upper().strip()
     
-    # Regras de Bancos
     if 'PRONAMPE' in d: return "PRONAMPE"
     
-    # Sicredi
     if 'SICREDI' in d:
         if 'EMPRESTIMO' in d or 'EMPRÉSTIMO' in d or 'PARCELA' in d or '/' in d:
             return "SICREDI"
             
-    # Banco do Nordeste
     if 'NORDESTE' in d:
         if 'BANCO' in d:
             return "BANCO DO NORDESTE"
             
-    # Banco do Brasil
     if 'BANCO DO BRASIL' in d: return "BANCO DO BRASIL"
     if ' BB ' in d or d.endswith(' BB') or d.startswith('BB '):
         if 'EMPRESTIMO' in d or 'FINANCIAMENTO' in d:
             return "BANCO DO BRASIL"
 
-    # Genéricos
     if 'EMPRESTIMO' in d or 'EMPRÉSTIMO' in d or 'FINANCIAMENTO' in d:
-        # Se chegou aqui é pq não caiu nos bancos acima, mas é empréstimo
         return "OUTROS EMPRÉSTIMOS"
         
     return None
@@ -88,7 +73,6 @@ def padronizar_unidade(texto):
 @st.cache_data
 def carregar_dados(caminho_ou_buffer):
     try:
-        # Leitura flexível
         df = pd.read_csv(caminho_ou_buffer)
         colunas_esperadas = ['data', 'DESCRIÇÃO', 'UNIDADE', 'VALOR']
         if not all(col in df.columns for col in colunas_esperadas):
@@ -97,7 +81,6 @@ def carregar_dados(caminho_ou_buffer):
             df = df.iloc[:, :4]
             df.columns = ['data', 'DESCRIÇÃO', 'UNIDADE', 'VALOR']
 
-        # Conversões
         df['data_formatada'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce')
         
         def limpar_valor(valor):
@@ -111,7 +94,6 @@ def carregar_dados(caminho_ou_buffer):
         df['valor_numerico'] = df['VALOR'].apply(limpar_valor)
         df['UNIDADE'] = df['UNIDADE'].astype(str).apply(padronizar_unidade)
         
-        # APLICA CATEGORIAS (Cria novas colunas)
         df['Grupo_Imposto'] = df['DESCRIÇÃO'].apply(categorizar_imposto)
         df['Grupo_Emprestimo'] = df['DESCRIÇÃO'].apply(categorizar_emprestimo)
         
@@ -127,7 +109,6 @@ def carregar_dados(caminho_ou_buffer):
 # --- APP ---
 st.sidebar.title("Menu")
 
-# Botão Limpar Cache
 if st.sidebar.button("🔄 Recarregar Tabela"):
     st.cache_data.clear()
 
@@ -143,48 +124,45 @@ if uploaded: df = carregar_dados(uploaded)
 if df is not None:
     st.title("📊 Relatório Financeiro 2025")
     
-    # --- FILTRO DE DATA FIXO EM 2025 ---
+    # --- FILTROS ---
     st.sidebar.header("Filtros")
     
-    # Definindo padrão para 2025
     padrao_inicio = date(2025, 1, 1)
     padrao_fim = date(2025, 12, 31)
-    
-    # Garante que as datas padrão estão dentro do limite do arquivo
     min_arq, max_arq = df['data_formatada'].min().date(), df['data_formatada'].max().date()
     
-    # Input de data
     d1, d2 = st.sidebar.columns(2)
     inicio = d1.date_input("Início", value=padrao_inicio, min_value=min_arq, max_value=max_arq)
     fim = d2.date_input("Fim", value=padrao_fim, min_value=min_arq, max_value=max_arq)
     
-    # Filtro Unidade
     unis = sorted(df['UNIDADE'].unique())
-    sel_unis = st.sidebar.multiselect("Unidades", unis, default=unis)
+    sel_unis = st.sidebar.multiselect("Unidades (Visão Geral)", unis, default=unis)
     
-    # Filtragem
-    mask = (df['data_formatada'].dt.date >= inicio) & (df['data_formatada'].dt.date <= fim) & (df['UNIDADE'].isin(sel_unis))
-    df_f = df[mask]
+    # DataFrame filtrado para Visão Geral (Respeita o filtro de Unidade da sidebar)
+    mask_geral = (df['data_formatada'].dt.date >= inicio) & (df['data_formatada'].dt.date <= fim) & (df['UNIDADE'].isin(sel_unis))
+    df_f = df[mask_geral]
+
+    # DataFrame filtrado APENAS para PESSOAL (Ignora filtro de Unidade da sidebar, usa apenas Data)
+    mask_pessoal = (df['data_formatada'].dt.date >= inicio) & (df['data_formatada'].dt.date <= fim) & (df['UNIDADE'] == 'PESSOAL')
+    df_pessoal = df[mask_pessoal]
     
     # --- ABAS ---
-    tab1, tab2, tab3 = st.tabs(["🏠 Visão Geral", "🏛️ Impostos", "🏦 Empréstimos"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🏠 Visão Geral", "🏛️ Impostos", "🏦 Empréstimos", "👤 Gastos Pessoais"])
     
     # ABA 1: GERAL
     with tab1:
         tot = df_f['valor_numerico'].sum()
         c1, c2 = st.columns(2)
-        c1.metric("Total Gasto (Período)", f"R$ {tot:,.2f}")
+        c1.metric("Total Gasto (Seleção)", f"R$ {tot:,.2f}")
         c2.metric("Qtd. Lançamentos", df_f.shape[0])
         
         st.markdown("---")
         g1, g2 = st.columns(2)
         
-        # Evolução
         evol = df_f.groupby('Mes_Ano')['valor_numerico'].sum().reset_index()
         fig1 = px.bar(evol, x='Mes_Ano', y='valor_numerico', title="Evolução Mensal", text_auto='.2s')
         g1.plotly_chart(fig1, use_container_width=True)
         
-        # Unidade
         uni = df_f.groupby('UNIDADE')['valor_numerico'].sum().reset_index().sort_values('valor_numerico', ascending=False)
         fig2 = px.bar(uni, x='UNIDADE', y='valor_numerico', color='UNIDADE', title="Por Unidade", text='valor_numerico')
         fig2.update_traces(texttemplate='R$ %{y:,.2f}')
@@ -192,52 +170,81 @@ if df is not None:
 
     # ABA 2: IMPOSTOS
     with tab2:
-        # Filtra apenas onde achou imposto
         df_imp = df_f[df_f['Grupo_Imposto'].notnull()]
-        
         if not df_imp.empty:
             tot_imp = df_imp['valor_numerico'].sum()
             st.metric("💰 Total Pago em Impostos", f"R$ {tot_imp:,.2f}")
-            
             c_i1, c_i2 = st.columns(2)
-            
-            # Gráfico de Ranking Agrupado (Aqui está a mágica: DAS vira uma barra só, ICMS outra, etc)
             grp_imp = df_imp.groupby('Grupo_Imposto')['valor_numerico'].sum().reset_index().sort_values('valor_numerico', ascending=True)
-            
-            fig_imp = px.bar(grp_imp, y='Grupo_Imposto', x='valor_numerico', orientation='h', 
-                             title="Ranking: Maiores Impostos", text='valor_numerico')
+            fig_imp = px.bar(grp_imp, y='Grupo_Imposto', x='valor_numerico', orientation='h', title="Ranking: Maiores Impostos", text='valor_numerico')
             fig_imp.update_traces(texttemplate='R$ %{x:,.2f}', textposition='outside')
             c_i1.plotly_chart(fig_imp, use_container_width=True)
-            
-            # Tabela
-            c_i2.markdown("#### Detalhamento")
             c_i2.dataframe(df_imp[['data', 'DESCRIÇÃO', 'VALOR', 'Grupo_Imposto']], height=400)
         else:
             st.warning("Nenhum imposto encontrado neste período.")
 
     # ABA 3: EMPRÉSTIMOS
     with tab3:
-        # Filtra apenas onde achou empréstimo
         df_emp = df_f[df_f['Grupo_Emprestimo'].notnull()]
-        
         if not df_emp.empty:
             tot_emp = df_emp['valor_numerico'].sum()
             st.metric("🏦 Total Pago em Empréstimos", f"R$ {tot_emp:,.2f}")
-            
             c_e1, c_e2 = st.columns(2)
-            
-            # Gráfico de Pizza/Barra Agrupado
             grp_emp = df_emp.groupby('Grupo_Emprestimo')['valor_numerico'].sum().reset_index().sort_values('valor_numerico', ascending=False)
-            
-            fig_emp = px.pie(grp_emp, values='valor_numerico', names='Grupo_Emprestimo', 
-                             title="Distribuição por Banco", hole=0.4)
+            fig_emp = px.pie(grp_emp, values='valor_numerico', names='Grupo_Emprestimo', title="Distribuição por Banco", hole=0.4)
             c_e1.plotly_chart(fig_emp, use_container_width=True)
-            
-            # Tabela
-            c_e2.markdown("#### Detalhamento")
             c_e2.dataframe(df_emp[['data', 'DESCRIÇÃO', 'VALOR', 'Grupo_Emprestimo']], height=400)
         else:
             st.warning("Nenhum empréstimo encontrado neste período.")
+
+    # ABA 4: GASTOS PESSOAIS (NOVA)
+    with tab4:
+        st.subheader("👤 Análise de Gastos Pessoais")
+        
+        if not df_pessoal.empty:
+            total_pessoal = df_pessoal['valor_numerico'].sum()
+            
+            # Métricas
+            kp1, kp2 = st.columns(2)
+            kp1.metric("Total Gasto (Pessoal)", f"R$ {total_pessoal:,.2f}")
+            kp2.metric("Lançamentos", df_pessoal.shape[0])
+            
+            st.markdown("---")
+            
+            # Filtro de texto para pesquisar dentro dos gastos pessoais
+            termo_busca = st.text_input("🔍 Pesquisar despesa específica (Ex: ENERGISA, CARTÃO):")
+            if termo_busca:
+                df_pessoal_view = df_pessoal[df_pessoal['DESCRIÇÃO'].astype(str).str.contains(termo_busca, case=False, na=False)]
+            else:
+                df_pessoal_view = df_pessoal
+
+            col_p1, col_p2 = st.columns([2, 1])
+            
+            with col_p1:
+                st.markdown("#### 🏆 Ranking: Maiores Gastos Pessoais")
+                # Agrupa por descrição para somar gastos repetidos (Ex: Várias contas de energia)
+                ranking_pessoal = df_pessoal_view.groupby('DESCRIÇÃO')['valor_numerico'].sum().reset_index()
+                # Pega os Top 15
+                ranking_pessoal = ranking_pessoal.sort_values('valor_numerico', ascending=True).tail(15)
+                
+                fig_rank_pessoal = px.bar(
+                    ranking_pessoal, 
+                    y='DESCRIÇÃO', 
+                    x='valor_numerico', 
+                    orientation='h',
+                    text='valor_numerico',
+                    title="Top 15 Maiores Despesas (Agrupadas)"
+                )
+                fig_rank_pessoal.update_traces(texttemplate='R$ %{x:,.2f}', textposition='outside')
+                fig_rank_pessoal.update_layout(height=600) # Aumenta altura para caber descrições
+                st.plotly_chart(fig_rank_pessoal, use_container_width=True)
+            
+            with col_p2:
+                st.markdown("#### 📋 Detalhes")
+                st.dataframe(df_pessoal_view[['data', 'DESCRIÇÃO', 'VALOR']].sort_values('data', ascending=False), height=600, use_container_width=True)
+                
+        else:
+            st.warning("Nenhum gasto classificado como 'PESSOAL' encontrado no período selecionado.")
 
 else:
     st.info("Carregando...")
