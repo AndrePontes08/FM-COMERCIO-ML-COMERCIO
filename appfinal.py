@@ -193,6 +193,14 @@ if df is not None:
         fig2.update_traces(texttemplate='R$ %{y:,.2f}')
         g2.plotly_chart(fig2, use_container_width=True)
 
+        st.download_button(
+        label="⬇️ Baixar CSV com Dados Tratados",
+        data=csv_tratado,
+        file_name="relatorio_financeiro_tratado_2025.csv",
+        mime="text/csv"
+)
+
+
     # ABA 2: IMPOSTOS
     with tab2:
         df_imp = df_f[df_f['Grupo_Imposto'].notnull()]
