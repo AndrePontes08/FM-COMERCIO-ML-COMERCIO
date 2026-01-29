@@ -141,6 +141,31 @@ if df is not None:
     # DataFrame filtrado para Visão Geral (Respeita o filtro de Unidade da sidebar)
     mask_geral = (df['data_formatada'].dt.date >= inicio) & (df['data_formatada'].dt.date <= fim) & (df['UNIDADE'].isin(sel_unis))
     df_f = df[mask_geral]
+    # --- GERAR CSV TRATADO PARA DOWNLOAD ---
+    df_export = df_f.copy()
+
+# Ajustes finais de exportação (opcional)
+    df_export['data'] = df_export['data_formatada'].dt.strftime('%d/%m/%Y')
+
+    colunas_export = [
+        'data',
+        'DESCRIÇÃO',
+        'UNIDADE',
+        'VALOR',
+        'valor_numerico',
+        'Grupo_Imposto',
+        'Grupo_Emprestimo',
+        'Mes_Ano'
+    ]
+
+    df_export = df_export[colunas_export]
+
+    csv_tratado = df_export.to_csv(
+        index=False,
+        sep=';',
+        encoding='utf-8-sig'
+    )
+
 
     # DataFrame filtrado APENAS para PESSOAL (Ignora filtro de Unidade da sidebar, usa apenas Data)
     mask_pessoal = (df['data_formatada'].dt.date >= inicio) & (df['data_formatada'].dt.date <= fim) & (df['UNIDADE'] == 'PESSOAL')
